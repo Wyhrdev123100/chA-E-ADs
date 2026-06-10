@@ -1,0 +1,26 @@
+{
+  "username": "AFKBot-pahm",
+  "lastKick": {
+    "timestamp": "2025-07-27T13:09:19.363Z",
+    "server": "thinhmcvn.aternos.me",
+    "username": "AFKBot-vy8c",
+    "reason": "{\"type\":\"compound\",\"value\":{\"translate\":{\"type\":\"string\",\"value\":\"multiplayer.disconnect.banned\"}}}"
+  },
+  "names": [
+    {
+      "name": "thinhdz",
+      "status": "active",
+      "lastUpdated": "2025-07-07T10:17:55.672Z"
+    },
+    {
+      "name": "thinhdz_bot_afk",
+      "status": "active",
+      "lastUpdated": "2025-07-07T12:18:11.292Z"
+    },
+    {
+      "name": "kayawa_natsuky",
+      "status": "active",
+      "lastUpdated": "2025-07-11T09:42:20.288Z"
+    }
+  ]
+}

@@ -1,0 +1,1229 @@
+<!DOCTYPE html>
+<html lang="vi">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>MC Bot Dashboard</title>
+<script src="/socket.io/socket.io.js"></script>
+<style>
+:root {
+    --bg:      #0d1117;
+    --bg2:     #161b22;
+    --bg3:     #21262d;
+    --border:  #30363d;
+    --text:    #c9d1d9;
+    --text2:   #8b949e;
+    --green:   #3fb950;
+    --red:     #f85149;
+    --yellow:  #d29922;
+    --blue:    #58a6ff;
+    --purple:  #bc8cff;
+    --orange:  #ffa657;
+    --radius:  8px;
+}
+* { margin:0; padding:0; box-sizing:border-box; }
+body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif; background:var(--bg); color:var(--text); min-height:100vh; font-size:14px; }
+::-webkit-scrollbar { width:6px; }
+::-webkit-scrollbar-track { background:var(--bg2); }
+::-webkit-scrollbar-thumb { background:var(--border); border-radius:3px; }
+
+/* Layout */
+.layout { display:flex; height:100vh; }
+.sidebar { width:260px; min-width:260px; background:var(--bg2); border-right:1px solid var(--border); display:flex; flex-direction:column; overflow:hidden; }
+.main { flex:1; display:flex; flex-direction:column; overflow:hidden; }
+
+/* Header */
+.header { background:var(--bg2); border-bottom:1px solid var(--border); padding:12px 20px; display:flex; align-items:center; justify-content:space-between; }
+.logo { font-size:1.1rem; font-weight:700; color:var(--blue); }
+.header-right { display:flex; align-items:center; gap:10px; }
+.status-dot { width:8px; height:8px; border-radius:50%; background:var(--red); animation:pulse 2s infinite; }
+.status-dot.online { background:var(--green); }
+
+/* Sidebar */
+.sidebar-header { padding:12px; border-bottom:1px solid var(--border); display:flex; justify-content:space-between; align-items:center; }
+.sidebar-title { font-size:0.75rem; color:var(--text2); text-transform:uppercase; letter-spacing:1px; font-weight:600; }
+.bot-list { flex:1; overflow-y:auto; padding:6px; }
+.bot-item { padding:10px 12px; border-radius:var(--radius); cursor:pointer; border:1px solid transparent; margin-bottom:3px; transition:all 0.2s; }
+.bot-item:hover { background:var(--bg3); }
+.bot-item.active { background:var(--bg3); border-color:var(--blue); }
+.bot-item-top { display:flex; justify-content:space-between; align-items:center; margin-bottom:4px; }
+.bot-name { font-weight:600; font-size:0.9rem; }
+.bot-badge { padding:2px 7px; border-radius:10px; font-size:0.65rem; font-weight:700; text-transform:uppercase; }
+.bot-badge.online  { background:rgba(63,185,80,0.15); color:var(--green); }
+.bot-badge.offline { background:rgba(248,81,73,0.15); color:var(--red); }
+.bot-badge.connecting { background:rgba(210,153,34,0.15); color:var(--yellow); }
+.bot-badge.kicked  { background:rgba(255,166,87,0.15); color:var(--orange); }
+.bot-badge.error   { background:rgba(248,81,73,0.15); color:var(--red); }
+.bot-info { font-size:0.72rem; color:var(--text2); }
+.health-bar { height:3px; background:var(--bg); border-radius:2px; margin-top:5px; overflow:hidden; }
+.health-fill { height:100%; border-radius:2px; background:var(--green); transition:width 0.5s; }
+
+/* Tabs */
+.tabs { display:flex; background:var(--bg2); border-bottom:1px solid var(--border); overflow-x:auto; }
+.tab { padding:12px 18px; cursor:pointer; font-size:0.82rem; font-weight:600; color:var(--text2); border-bottom:2px solid transparent; white-space:nowrap; transition:all 0.2s; }
+.tab:hover { color:var(--text); }
+.tab.active { color:var(--blue); border-bottom-color:var(--blue); }
+
+/* Content */
+.content { flex:1; overflow-y:auto; padding:20px; }
+.panel { display:none; }
+.panel.active { display:block; }
+
+/* Cards */
+.card { background:var(--bg2); border:1px solid var(--border); border-radius:var(--radius); padding:16px; margin-bottom:14px; }
+.card-title { font-size:0.85rem; font-weight:700; color:var(--text2); text-transform:uppercase; letter-spacing:0.5px; margin-bottom:12px; display:flex; align-items:center; gap:6px; }
+.grid2 { display:grid; grid-template-columns:1fr 1fr; gap:14px; }
+.grid3 { display:grid; grid-template-columns:1fr 1fr 1fr; gap:14px; }
+.grid4 { display:grid; grid-template-columns:repeat(4,1fr); gap:10px; }
+
+/* Stat cards */
+.stat { background:var(--bg3); border:1px solid var(--border); border-radius:var(--radius); padding:14px; text-align:center; }
+.stat-val { font-size:1.6rem; font-weight:800; color:var(--blue); }
+.stat-lbl { font-size:0.72rem; color:var(--text2); text-transform:uppercase; margin-top:3px; }
+
+/* Progress bars */
+.progress { height:8px; background:var(--bg3); border-radius:4px; overflow:hidden; margin:3px 0 8px; }
+.progress-fill { height:100%; border-radius:4px; transition:width 0.5s; }
+.progress-fill.health { background:linear-gradient(90deg,var(--red),var(--green)); }
+.progress-fill.food   { background:linear-gradient(90deg,var(--yellow),var(--orange)); }
+.progress-fill.exp    { background:linear-gradient(90deg,var(--purple),var(--blue)); }
+
+/* Buttons */
+.btn { padding:7px 14px; border:none; border-radius:var(--radius); cursor:pointer; font-size:0.82rem; font-weight:600; transition:all 0.2s; display:inline-flex; align-items:center; gap:5px; }
+.btn:hover { opacity:0.85; transform:translateY(-1px); }
+.btn:active { transform:translateY(0); }
+.btn-primary { background:var(--blue); color:#000; }
+.btn-success { background:var(--green); color:#000; }
+.btn-danger  { background:var(--red); color:#fff; }
+.btn-warning { background:var(--yellow); color:#000; }
+.btn-secondary { background:var(--bg3); color:var(--text); border:1px solid var(--border); }
+.btn-sm { padding:4px 10px; font-size:0.75rem; }
+.btn-row { display:flex; flex-wrap:wrap; gap:6px; }
+
+/* Forms */
+.form-group { margin-bottom:10px; }
+.label { display:block; font-size:0.75rem; font-weight:600; color:var(--text2); margin-bottom:4px; text-transform:uppercase; }
+.input, .select { width:100%; padding:8px 10px; background:var(--bg3); border:1px solid var(--border); border-radius:var(--radius); color:var(--text); font-size:0.85rem; }
+.input:focus, .select:focus { outline:none; border-color:var(--blue); }
+.input::placeholder { color:var(--text2); }
+.row { display:flex; gap:8px; }
+.row .form-group { flex:1; }
+
+/* Chat */
+.chat-box { background:var(--bg); border:1px solid var(--border); border-radius:var(--radius); display:flex; flex-direction:column; height:400px; }
+.chat-msgs { flex:1; overflow-y:auto; padding:10px; }
+.chat-msg { padding:3px 0; font-size:0.82rem; line-height:1.5; }
+.chat-msg .time { color:var(--text2); font-size:0.7rem; margin-right:6px; }
+.chat-msg .user { font-weight:700; color:var(--blue); }
+.chat-msg.sent .user { color:var(--purple); }
+.chat-msg.whisper .user { color:var(--orange); }
+.chat-msg.system { color:var(--text2); font-style:italic; }
+.chat-input-row { display:flex; border-top:1px solid var(--border); }
+.chat-input { flex:1; padding:10px; background:transparent; border:none; color:var(--text); font-size:0.85rem; }
+.chat-input:focus { outline:none; }
+
+/* Console */
+.console-box { background:#0a0c10; border:1px solid var(--border); border-radius:var(--radius); font-family:'JetBrains Mono','Fira Code',monospace; font-size:0.75rem; display:flex; flex-direction:column; height:450px; }
+.console-out { flex:1; overflow-y:auto; padding:10px; }
+.console-line { padding:1px 0; display:flex; gap:8px; }
+.c-time { color:var(--text2); min-width:65px; }
+.c-level { min-width:40px; font-weight:700; text-transform:uppercase; font-size:0.65rem; }
+.c-level.info  { color:var(--green); }
+.c-level.warn  { color:var(--yellow); }
+.c-level.error { color:var(--red); }
+.c-level.debug { color:var(--blue); }
+.c-msg { color:var(--text); word-break:break-all; }
+.console-in { display:flex; border-top:1px solid var(--border); }
+.console-prefix { padding:8px 10px; color:var(--green); font-weight:700; }
+.console-input { flex:1; padding:8px; background:transparent; border:none; color:var(--text); font-family:monospace; font-size:0.82rem; }
+.console-input:focus { outline:none; }
+
+/* Inventory */
+.inv-grid { display:grid; grid-template-columns:repeat(9,1fr); gap:3px; background:var(--bg); padding:6px; border-radius:var(--radius); }
+.inv-slot { aspect-ratio:1; background:var(--bg3); border:1px solid var(--border); border-radius:4px; display:flex; flex-direction:column; align-items:center; justify-content:center; padding:2px; cursor:pointer; transition:all 0.15s; position:relative; min-height:42px; }
+.inv-slot:hover { border-color:var(--blue); }
+.inv-slot.filled { border-color:var(--purple); }
+.inv-icon { font-size:1.1rem; }
+.inv-name { font-size:0.5rem; color:var(--text2); text-align:center; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; width:100%; }
+.inv-count { position:absolute; bottom:1px; right:3px; font-size:0.6rem; font-weight:700; color:var(--text); }
+
+/* Entity list */
+.entity-list { max-height:350px; overflow-y:auto; }
+.entity-item { display:flex; align-items:center; justify-content:space-between; padding:7px 10px; border-bottom:1px solid var(--border); transition:background 0.1s; }
+.entity-item:hover { background:var(--bg3); }
+.entity-info { display:flex; align-items:center; gap:8px; }
+.entity-icon { width:28px; height:28px; border-radius:6px; display:flex; align-items:center; justify-content:center; font-size:1rem; }
+.entity-icon.hostile { background:rgba(248,81,73,0.15); }
+.entity-icon.player  { background:rgba(88,166,255,0.15); }
+.entity-icon.passive { background:rgba(63,185,80,0.15); }
+.entity-name { font-weight:600; font-size:0.82rem; }
+.entity-detail { font-size:0.7rem; color:var(--text2); }
+.entity-dist { font-size:0.78rem; color:var(--text2); font-weight:600; }
+.target-badge { font-size:0.65rem; color:var(--red); font-weight:700; }
+
+/* KillAura panel */
+.ka-config { display:grid; grid-template-columns:1fr 1fr; gap:10px; margin-bottom:12px; }
+.ka-status { background:var(--bg3); border:1px solid var(--border); border-radius:var(--radius); padding:12px; margin-bottom:12px; }
+.ka-target { font-size:0.85rem; color:var(--orange); font-weight:600; }
+.ka-stats { display:flex; gap:16px; font-size:0.78rem; color:var(--text2); margin-top:4px; }
+.ka-on { border-color:var(--red) !important; }
+
+/* Toggle */
+.toggle { display:flex; align-items:center; justify-content:space-between; padding:8px 0; border-bottom:1px solid var(--border); }
+.toggle-label { font-size:0.85rem; font-weight:600; }
+.toggle-sub { font-size:0.72rem; color:var(--text2); margin-top:1px; }
+.toggle-sw { width:40px; height:22px; background:var(--bg3); border-radius:11px; cursor:pointer; position:relative; transition:background 0.2s; border:1px solid var(--border); flex-shrink:0; }
+.toggle-sw.on { background:var(--green); border-color:var(--green); }
+.toggle-sw::after { content:''; width:16px; height:16px; background:#fff; border-radius:50%; position:absolute; top:2px; left:2px; transition:left 0.2s; }
+.toggle-sw.on::after { left:20px; }
+
+/* Modal */
+.overlay { position:fixed; inset:0; background:rgba(0,0,0,0.7); display:none; align-items:center; justify-content:center; z-index:1000; }
+.overlay.show { display:flex; }
+.modal { background:var(--bg2); border:1px solid var(--border); border-radius:12px; padding:24px; width:460px; max-width:95vw; animation:modalIn 0.2s ease; }
+@keyframes modalIn { from { opacity:0; transform:scale(0.95); } to { opacity:1; transform:scale(1); } }
+.modal-title { font-size:1rem; font-weight:700; margin-bottom:16px; }
+.modal-footer { display:flex; justify-content:flex-end; gap:8px; margin-top:16px; }
+
+/* Toast */
+.toasts { position:fixed; top:70px; right:16px; z-index:2000; display:flex; flex-direction:column; gap:6px; }
+.toast { padding:10px 16px; border-radius:var(--radius); font-size:0.82rem; font-weight:600; animation:toastIn 0.3s ease, toastOut 0.3s ease 3.7s forwards; max-width:320px; box-shadow:0 4px 16px rgba(0,0,0,0.5); }
+.toast.success { background:var(--green); color:#000; }
+.toast.error   { background:var(--red);   color:#fff; }
+.toast.info    { background:var(--blue);  color:#000; }
+.toast.warning { background:var(--yellow); color:#000; }
+@keyframes toastIn  { from { opacity:0; transform:translateX(50px); } to { opacity:1; transform:translateX(0); } }
+@keyframes toastOut { from { opacity:1; } to { opacity:0; } }
+
+/* No bot */
+.empty { display:flex; flex-direction:column; align-items:center; justify-content:center; height:100%; color:var(--text2); gap:12px; padding:40px; text-align:center; }
+.empty-icon { font-size:3rem; opacity:0.4; }
+
+/* Responsive */
+@media (max-width:768px) {
+    .sidebar { display:none; }
+    .grid2,.grid3,.grid4 { grid-template-columns:1fr; }
+}
+
+@keyframes pulse { 0%,100%{opacity:1} 50%{opacity:0.4} }
+</style>
+</head>
+<body>
+
+<div class="layout">
+<!-- Sidebar -->
+<aside class="sidebar">
+    <div class="sidebar-header">
+        <span class="sidebar-title">🤖 Bots</span>
+        <button class="btn btn-sm btn-secondary" onclick="refreshAll()">🔄</button>
+    </div>
+    <div class="bot-list" id="botList">
+        <div class="empty" style="padding:30px">
+            <div class="empty-icon">🤖</div>
+            <p>Chưa có bot nào</p>
+        </div>
+    </div>
+    <div style="padding:10px; border-top:1px solid var(--border);">
+        <button class="btn btn-primary" style="width:100%" onclick="showCreateModal()">➕ New Bot</button>
+    </div>
+</aside>
+
+<!-- Main -->
+<div class="main">
+    <!-- Header -->
+    <div class="header">
+        <div style="display:flex;align-items:center;gap:10px">
+            <span class="logo">⚔️ MC Bot Dashboard</span>
+            <span class="status-dot" id="connDot"></span>
+            <span id="connText" style="font-size:0.78rem;color:var(--text2)">Connecting...</span>
+        </div>
+        <div class="header-right">
+            <span id="botCountDisp" style="font-size:0.8rem;color:var(--text2)">0 bots</span>
+        </div>
+    </div>
+
+    <!-- Tabs -->
+    <div class="tabs">
+        <div class="tab active" data-tab="overview" onclick="switchTab('overview')">📊 Overview</div>
+        <div class="tab" data-tab="killaura" onclick="switchTab('killaura')">⚔️ KillAura</div>
+        <div class="tab" data-tab="chat" onclick="switchTab('chat')">💬 Chat</div>
+        <div class="tab" data-tab="inventory" onclick="switchTab('inventory')">🎒 Inventory</div>
+        <div class="tab" data-tab="entities" onclick="switchTab('entities')">👁️ Entities</div>
+        <div class="tab" data-tab="console" onclick="switchTab('console')">🖥️ Console</div>
+    </div>
+
+    <!-- Content -->
+    <div class="content">
+
+        <!-- Overview -->
+        <div class="panel active" id="panel-overview">
+            <div id="noBot" class="empty">
+                <div class="empty-icon">⛏️</div>
+                <h2 style="color:var(--text)">Welcome to MC Bot Dashboard</h2>
+                <p>Tạo bot để bắt đầu</p>
+                <button class="btn btn-primary" onclick="showCreateModal()">➕ Tạo Bot</button>
+            </div>
+            <div id="botOverview" style="display:none">
+                <div class="grid4" style="margin-bottom:14px">
+                    <div class="stat"><div class="stat-val" id="ov-health">--</div><div class="stat-lbl">❤️ HP</div></div>
+                    <div class="stat"><div class="stat-val" id="ov-food">--</div><div class="stat-lbl">🍖 Food</div></div>
+                    <div class="stat"><div class="stat-val" id="ov-level">--</div><div class="stat-lbl">⭐ Level</div></div>
+                    <div class="stat"><div class="stat-val" id="ov-players">--</div><div class="stat-lbl">👥 Players</div></div>
+                </div>
+                <div class="grid2">
+                    <div class="card">
+                        <div class="card-title">📍 Position</div>
+                        <div style="font-family:monospace;font-size:0.85rem;color:var(--blue)">
+                            X: <span id="ov-x">--</span> &nbsp;
+                            Y: <span id="ov-y">--</span> &nbsp;
+                            Z: <span id="ov-z">--</span>
+                        </div>
+                        <div style="margin-top:8px;font-size:0.78rem;color:var(--text2)">
+                            <span>Dim: <span id="ov-dim">--</span></span> &nbsp;
+                            <span>Mode: <span id="ov-mode">--</span></span>
+                        </div>
+                        <div style="margin-top:4px;font-size:0.78rem;color:var(--text2)">
+                            <span>Time: <span id="ov-time">--</span></span> &nbsp;
+                            <span>Weather: <span id="ov-weather">--</span></span>
+                        </div>
+                    </div>
+                    <div class="card">
+                        <div class="card-title">📊 Status Bars</div>
+                        <div style="font-size:0.75rem;color:var(--text2)">❤️ Health</div>
+                        <div class="progress"><div class="progress-fill health" id="bar-health" style="width:0%"></div></div>
+                        <div style="font-size:0.75rem;color:var(--text2)">🍖 Food</div>
+                        <div class="progress"><div class="progress-fill food" id="bar-food" style="width:0%"></div></div>
+                        <div style="font-size:0.75rem;color:var(--text2)">⭐ Experience</div>
+                        <div class="progress"><div class="progress-fill exp" id="bar-exp" style="width:0%"></div></div>
+                    </div>
+                </div>
+                <div class="card">
+                    <div class="card-title">⚡ Quick Actions</div>
+                    <div class="btn-row">
+                        <button class="btn btn-secondary" onclick="doAction('autoEat',{enabled:true})">🍖 Auto Eat ON</button>
+                        <button class="btn btn-secondary" onclick="doAction('autoEat',{enabled:false})">🍖 Auto Eat OFF</button>
+                        <button class="btn btn-warning"   onclick="doAction('stop',{})">⏹️ Stop All</button>
+                        <button class="btn btn-danger"    onclick="doAction('disconnect',{})">🔌 Disconnect</button>
+                        <button class="btn btn-success"   onclick="reconnectCurrent()">🔄 Reconnect</button>
+                        <button class="btn btn-danger"    onclick="removeCurrent()">🗑️ Remove</button>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <!-- KillAura -->
+        <div class="panel" id="panel-killaura">
+            <div class="card ka-status" id="ka-status-card">
+                <div style="display:flex;justify-content:space-between;align-items:center">
+                    <div>
+                        <div style="font-weight:700;font-size:1rem">⚔️ KillAura</div>
+                        <div class="ka-stats">
+                            <span>Cooldown: <span id="ka-cooldown">--</span>ms</span>
+                            <span>Clicks: <span id="ka-clicks">0</span></span>
+                        </div>
+                    </div>
+                    <button class="btn btn-danger" id="ka-toggle-btn" onclick="toggleKillaura()">▶️ Enable</button>
+                </div>
+                <div style="margin-top:8px" id="ka-target-info" style="display:none">
+                    <div class="ka-target">🎯 <span id="ka-target-name">No target</span></div>
+                    <div class="ka-stats">
+                        <span>Dist: <span id="ka-target-dist">--</span>m</span>
+                        <span>HP: <span id="ka-target-hp">--</span></span>
+                    </div>
+                </div>
+            </div>
+
+            <div class="card">
+                <div class="card-title">⚙️ KillAura Settings</div>
+                <div class="ka-config">
+                    <div class="form-group">
+                        <label class="label">Range (1-6)</label>
+                        <input class="input" id="ka-range" type="number" value="4.5" min="1" max="6" step="0.5">
+                    </div>
+                    <div class="form-group">
+                        <label class="label">Speed (0=auto, 1-12 CPS)</label>
+                        <input class="input" id="ka-speed" type="number" value="0" min="0" max="12" step="0.5">
+                    </div>
+                    <div class="form-group">
+                        <label class="label">Priority</label>
+                        <select class="select" id="ka-priority">
+                            <option value="angle">Angle (tốt nhất)</option>
+                            <option value="distance">Distance</option>
+                            <option value="health">Health (ít máu nhất)</option>
+                        </select>
+                    </div>
+                    <div class="form-group">
+                        <label class="label">FOV (30-360°)</label>
+                        <input class="input" id="ka-fov" type="number" value="360" min="30" max="360" step="10">
+                    </div>
+                    <div class="form-group">
+                        <label class="label">Target Type</label>
+                        <select class="select" id="ka-target-type">
+                            <option value="hostile">Hostile Mobs</option>
+                            <option value="player">Players</option>
+                            <option value="mob">All Mobs</option>
+                            <option value="all">All Entities</option>
+                        </select>
+                    </div>
+                </div>
+                <div class="toggle">
+                    <div><div class="toggle-label">Pause on Containers</div><div class="toggle-sub">Dừng khi mở chest/menu</div></div>
+                    <div class="toggle-sw on" id="tog-containers" onclick="toggleOpt('containers')"></div>
+                </div>
+                <div class="toggle">
+                    <div><div class="toggle-label">Filter Animals</div><div class="toggle-sub">Bỏ qua động vật</div></div>
+                    <div class="toggle-sw on" id="tog-animals" onclick="toggleOpt('animals')"></div>
+                </div>
+                <div class="toggle">
+                    <div><div class="toggle-label">Filter Players</div><div class="toggle-sub">Bỏ qua người chơi</div></div>
+                    <div class="toggle-sw" id="tog-players" onclick="toggleOpt('players')"></div>
+                </div>
+                <div class="toggle">
+                    <div><div class="toggle-label">Filter Named</div><div class="toggle-sub">Bỏ qua entity có tên</div></div>
+                    <div class="toggle-sw" id="tog-named" onclick="toggleOpt('named')"></div>
+                </div>
+                <div style="margin-top:12px">
+                    <button class="btn btn-primary" onclick="applyKillauraSettings()">💾 Apply Settings</button>
+                </div>
+            </div>
+        </div>
+
+        <!-- Chat -->
+        <div class="panel" id="panel-chat">
+            <div class="chat-box" style="height:calc(100vh - 200px)">
+                <div class="chat-msgs" id="chatMsgs">
+                    <div style="text-align:center;padding:30px;color:var(--text2)">Chat sẽ hiện ở đây...</div>
+                </div>
+                <div class="chat-input-row">
+                    <input class="chat-input" id="chatInput" placeholder="Nhập tin nhắn (Enter để gửi)..." onkeypress="if(event.key==='Enter')sendChatMsg()">
+                    <button class="btn btn-primary" style="margin:6px;border-radius:6px" onclick="sendChatMsg()">Gửi</button>
+                </div>
+            </div>
+        </div>
+
+        <!-- Inventory -->
+        <div class="panel" id="panel-inventory">
+            <div class="card">
+                <div class="card-title" style="justify-content:space-between">
+                    <span>🎒 Inventory</span>
+                    <button class="btn btn-sm btn-secondary" onclick="refreshInv()">🔄</button>
+                </div>
+                <div class="inv-grid" id="invGrid"></div>
+            </div>
+            <div class="grid2">
+                <div class="card">
+                    <div class="card-title">🛡️ Equipment</div>
+                    <div id="eqDisplay"><p style="color:var(--text2)">--</p></div>
+                </div>
+                <div class="card">
+                    <div class="card-title">🔧 Actions</div>
+                    <div class="form-group">
+                        <label class="label">Equip Item</label>
+                        <div class="row">
+                            <input class="input" id="equipName" placeholder="Item name">
+                            <select class="select" id="equipSlot" style="max-width:100px">
+                                <option value="hand">Hand</option>
+                                <option value="head">Head</option>
+                                <option value="torso">Torso</option>
+                                <option value="legs">Legs</option>
+                                <option value="feet">Feet</option>
+                                <option value="off-hand">Off</option>
+                            </select>
+                            <button class="btn btn-success btn-sm" onclick="equipItem()">Go</button>
+                        </div>
+                    </div>
+                    <div class="form-group">
+                        <label class="label">Hotbar Slot (0-8)</label>
+                        <div class="row">
+                            <input class="input" id="hotbarSlot" type="number" min="0" max="8" value="0">
+                            <button class="btn btn-primary btn-sm" onclick="setHotbar()">Set</button>
+                        </div>
+                    </div>
+                    <div class="form-group">
+                        <label class="label">Drop Item</label>
+                        <div class="row">
+                            <input class="input" id="dropName" placeholder="Item name">
+                            <input class="input" id="dropCount" type="number" value="1" style="max-width:60px">
+                            <button class="btn btn-warning btn-sm" onclick="dropItem()">Drop</button>
+                        </div>
+                    </div>
+                    <button class="btn btn-danger" style="width:100%;margin-top:4px" onclick="doAction('drop',{all:true})">🗑️ Drop All</button>
+                </div>
+            </div>
+        </div>
+
+        <!-- Entities -->
+        <div class="panel" id="panel-entities">
+            <div class="grid2">
+                <div class="card">
+                    <div class="card-title" style="justify-content:space-between">
+                        <span>👁️ Nearby Entities</span>
+                        <button class="btn btn-sm btn-secondary" onclick="refreshEntities()">🔄</button>
+                    </div>
+                    <div class="entity-list" id="entityList">
+                        <div style="padding:20px;text-align:center;color:var(--text2)">Không có entity</div>
+                    </div>
+                </div>
+                <div class="card">
+                    <div class="card-title">👥 Players Online</div>
+                    <div class="entity-list" id="playerList">
+                        <div style="padding:20px;text-align:center;color:var(--text2)">Không có player</div>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <!-- Console -->
+        <div class="panel" id="panel-console">
+            <div class="console-box" style="height:calc(100vh - 200px)">
+                <div style="display:flex;justify-content:space-between;align-items:center;padding:8px 12px;border-bottom:1px solid var(--border)">
+                    <span style="font-size:0.8rem;font-weight:600">🖥️ Console</span>
+                    <div style="display:flex;gap:6px">
+                        <select class="select" id="logFilter" onchange="filterLogs()" style="width:100px;padding:3px 6px;font-size:0.75rem">
+                            <option value="all">All</option>
+                            <option value="info">Info</option>
+                            <option value="warn">Warn</option>
+                            <option value="error">Error</option>
+                        </select>
+                        <button class="btn btn-sm btn-secondary" onclick="clearConsole()">Clear</button>
+                    </div>
+                </div>
+                <div class="console-out" id="consoleOut"></div>
+                <div class="console-in">
+                    <span class="console-prefix">❯</span>
+                    <input class="console-input" id="consoleInput" placeholder="Nhập lệnh chat..." onkeypress="if(event.key==='Enter')sendConsole()">
+                </div>
+            </div>
+        </div>
+
+    </div><!-- /content -->
+</div><!-- /main -->
+</div><!-- /layout -->
+
+<!-- Create Bot Modal -->
+<div class="overlay" id="createModal">
+    <div class="modal">
+        <div class="modal-title">➕ Tạo Bot Mới</div>
+        <div class="form-group">
+            <label class="label">Username *</label>
+            <input class="input" id="m-user" value="BotPlayer" placeholder="Bot username">
+        </div>
+        <div class="row">
+            <div class="form-group">
+                <label class="label">Server Host</label>
+                <input class="input" id="m-host" value="localhost" placeholder="host">
+            </div>
+            <div class="form-group">
+                <label class="label">Port</label>
+                <input class="input" id="m-port" type="number" value="25565">
+            </div>
+        </div>
+        <div class="row">
+            <div class="form-group">
+                <label class="label">Version</label>
+                <select class="select" id="m-ver">
+                    <option value="1.20.4">1.20.4</option>
+                    <option value="1.20.2">1.20.2</option>
+                    <option value="1.20.1" selected>1.20.1</option>
+                    <option value="1.19.4">1.19.4</option>
+                    <option value="1.19.2">1.19.2</option>
+                    <option value="1.18.2">1.18.2</option>
+                    <option value="1.16.5">1.16.5</option>
+                    <option value="1.12.2">1.12.2</option>
+                    <option value="1.8.9">1.8.9</option>
+                </select>
+            </div>
+            <div class="form-group">
+                <label class="label">Auth</label>
+                <select class="select" id="m-auth">
+                    <option value="offline">Offline (Cracked)</option>
+                    <option value="microsoft">Microsoft</option>
+                </select>
+            </div>
+        </div>
+        <div class="modal-footer">
+            <button class="btn btn-secondary" onclick="closeCreateModal()">Cancel</button>
+            <button class="btn btn-primary" onclick="createBot()">🚀 Create</button>
+        </div>
+    </div>
+</div>
+
+<!-- Toasts -->
+<div class="toasts" id="toasts"></div>
+
+<script>
+// ====================================================================
+// STATE
+// ====================================================================
+const S = {
+    socket:     null,
+    connected:  false,
+    selectedId: null,
+    bots:       {},
+    chatMsgs:   {},
+    consoleLogs:[],
+    logFilter:  'all',
+    kaToggles:  { containers: true, animals: true, players: false, named: false }
+};
+
+// ====================================================================
+// SOCKET
+// ====================================================================
+
+function initSocket() {
+    S.socket = io({ reconnection: true, reconnectionDelay: 1000 });
+
+    S.socket.on('connect', () => {
+        S.connected = true;
+        setConnStatus(true);
+        toast('Đã kết nối!', 'success');
+    });
+
+    S.socket.on('disconnect', () => {
+        S.connected = false;
+        setConnStatus(false);
+        toast('Mất kết nối!', 'error');
+    });
+
+    S.socket.on('init', (data) => {
+        if (data.bots) {
+            data.bots.forEach(b => S.bots[b.id] = b);
+            renderBotList();
+        }
+    });
+
+    S.socket.on('status:update', (data) => {
+        if (data.bots) {
+            data.bots.forEach(b => S.bots[b.id] = b);
+            renderBotList();
+            if (S.selectedId && S.bots[S.selectedId]) {
+                updateOverview(S.bots[S.selectedId]);
+                updateKillauraStatus(S.bots[S.selectedId]);
+            }
+        }
+        if (data.stats) {
+            document.getElementById('botCountDisp').textContent = `${data.stats.activeBots} bots`;
+        }
+    });
+
+    S.socket.on('bot:created', (bot) => {
+        S.bots[bot.id] = bot;
+        renderBotList();
+        toast(`Bot "${bot.username}" đã tạo!`, 'success');
+    });
+
+    S.socket.on('bot:removed', (data) => {
+        delete S.bots[data.botId];
+        if (S.selectedId === data.botId) {
+            S.selectedId = null;
+            showNoBot();
+        }
+        renderBotList();
+    });
+
+    S.socket.on('bot:update', (bot) => {
+        S.bots[bot.id] = bot;
+        renderBotList();
+        if (S.selectedId === bot.id) {
+            updateOverview(bot);
+            updateKillauraStatus(bot);
+        }
+    });
+
+    S.socket.on('bot:detail', (bot) => {
+        if (S.selectedId === bot.id) {
+            updateDetailView(bot);
+        }
+    });
+
+    S.socket.on('bot:chat', (data) => {
+        addChatMsg(data.botId, data);
+    });
+
+    S.socket.on('bot:message', (data) => {
+        addChatMsg(data.botId, { type: 'system', message: data.message, timestamp: data.timestamp });
+    });
+
+    S.socket.on('bot:health', (data) => {
+        if (S.selectedId === data.botId) {
+            updateHealthBars(data.health, data.food);
+        }
+    });
+
+    S.socket.on('bot:death', (data) => {
+        if (S.selectedId === data.botId) toast('Bot đã chết! 💀', 'error');
+    });
+
+    S.socket.on('bot:killaura', (data) => {
+        if (S.selectedId === data.botId) {
+            document.getElementById('ka-clicks').textContent = data.totalClicks;
+            if (data.target) {
+                document.getElementById('ka-target-name').textContent = data.target.name;
+                document.getElementById('ka-target-dist').textContent = data.target.distance;
+                document.getElementById('ka-target-hp').textContent   = data.target.health || '?';
+                document.getElementById('ka-target-info').style.display = 'block';
+            }
+        }
+    });
+
+    S.socket.on('bot:playerJoined', (data) => {
+        addChatMsg(data.botId, { type: 'system', message: `${data.player.username} đã vào game`, timestamp: Date.now() });
+    });
+
+    S.socket.on('bot:playerLeft', (data) => {
+        addChatMsg(data.botId, { type: 'system', message: `${data.player.username} đã rời game`, timestamp: Date.now() });
+    });
+
+    S.socket.on('log', (entry) => {
+        addConsoleLog(entry);
+    });
+}
+
+function setConnStatus(ok) {
+    document.getElementById('connDot').className  = 'status-dot' + (ok ? ' online' : '');
+    document.getElementById('connText').textContent = ok ? 'Connected' : 'Disconnected';
+}
+
+// ====================================================================
+// BOT LIST
+// ====================================================================
+
+function renderBotList() {
+    const ids = Object.keys(S.bots);
+    const el  = document.getElementById('botList');
+
+    if (!ids.length) {
+        el.innerHTML = `<div class="empty" style="padding:30px"><div class="empty-icon">🤖</div><p>Chưa có bot</p></div>`;
+        return;
+    }
+
+    el.innerHTML = ids.map(id => {
+        const b    = S.bots[id];
+        const hp   = b.health != null ? (b.health / 20 * 100) : 0;
+        const act  = id === S.selectedId ? 'active' : '';
+        return `<div class="bot-item ${act}" onclick="selectBot('${id}')">
+            <div class="bot-item-top">
+                <span class="bot-name">${esc(b.username)}</span>
+                <span class="bot-badge ${b.status}">${b.status}</span>
+            </div>
+            <div class="bot-info">${esc(b.host)}:${b.port}</div>
+            ${b.status==='online'?`<div class="health-bar"><div class="health-fill" style="width:${hp}%"></div></div>`:''}
+            ${b.killaura?.enabled ? '<div style="font-size:0.65rem;color:var(--red);margin-top:3px">⚔️ KillAura ON</div>' : ''}
+        </div>`;
+    }).join('');
+}
+
+function selectBot(id) {
+    S.selectedId = id;
+    renderBotList();
+    showBotView();
+    S.socket.emit('bot:subscribe', { botId: id });
+
+    const bot = S.bots[id];
+    if (bot) {
+        updateOverview(bot);
+        updateKillauraStatus(bot);
+    }
+
+    refreshInv();
+    refreshEntities();
+
+    // Render chat history
+    const msgs = S.chatMsgs[id] || [];
+    const c = document.getElementById('chatMsgs');
+    c.innerHTML = '';
+    msgs.slice(-80).forEach(m => appendChatEl(m));
+}
+
+function showNoBot() {
+    document.getElementById('noBot').style.display    = 'flex';
+    document.getElementById('botOverview').style.display = 'none';
+}
+
+function showBotView() {
+    document.getElementById('noBot').style.display    = 'none';
+    document.getElementById('botOverview').style.display = 'block';
+}
+
+// ====================================================================
+// OVERVIEW
+// ====================================================================
+
+function updateOverview(bot) {
+    document.getElementById('ov-health').textContent  = bot.health != null ? Math.round(bot.health * 10) / 10 : '--';
+    document.getElementById('ov-food').textContent    = bot.food   != null ? bot.food : '--';
+    document.getElementById('ov-level').textContent   = bot.experience ? bot.experience.level : '--';
+    document.getElementById('ov-players').textContent = bot.playerCount != null ? bot.playerCount : '--';
+
+    if (bot.position) {
+        document.getElementById('ov-x').textContent = bot.position.x;
+        document.getElementById('ov-y').textContent = bot.position.y;
+        document.getElementById('ov-z').textContent = bot.position.z;
+    }
+
+    document.getElementById('ov-dim').textContent  = bot.dimension || '--';
+    document.getElementById('ov-mode').textContent = bot.gameMode  || '--';
+
+    if (bot.time) {
+        const h = Math.floor(bot.time.timeOfDay / 1000 + 6) % 24;
+        const m = Math.floor((bot.time.timeOfDay % 1000) / 1000 * 60);
+        document.getElementById('ov-time').textContent = `${String(h).padStart(2,'0')}:${String(m).padStart(2,'0')}`;
+    }
+    document.getElementById('ov-weather').textContent = bot.isRaining ? '🌧️ Rain' : '☀️ Clear';
+
+    updateHealthBars(bot.health || 0, bot.food || 0, bot.experience?.progress || 0);
+}
+
+function updateHealthBars(health, food, exp = 0) {
+    document.getElementById('bar-health').style.width = (health / 20 * 100) + '%';
+    document.getElementById('bar-food').style.width   = (food   / 20 * 100) + '%';
+    document.getElementById('bar-exp').style.width    = (exp * 100) + '%';
+}
+
+// ====================================================================
+// KILLAURA
+// ====================================================================
+
+function updateKillauraStatus(bot) {
+    if (!bot.killaura) return;
+    const ka = bot.killaura;
+
+    document.getElementById('ka-cooldown').textContent = ka.cooldownMs;
+    document.getElementById('ka-clicks').textContent   = ka.totalClicks;
+
+    const btn = document.getElementById('ka-toggle-btn');
+    const card = document.getElementById('ka-status-card');
+
+    if (ka.enabled) {
+        btn.textContent = '⏹️ Disable';
+        btn.className   = 'btn btn-danger';
+        card.classList.add('ka-on');
+
+        if (ka.currentTarget) {
+            document.getElementById('ka-target-name').textContent = ka.currentTarget.name;
+            document.getElementById('ka-target-dist').textContent = ka.currentTarget.distance;
+            document.getElementById('ka-target-hp').textContent   = ka.currentTarget.health || '?';
+            document.getElementById('ka-target-info').style.display = 'block';
+        } else {
+            document.getElementById('ka-target-info').style.display = 'none';
+        }
+    } else {
+        btn.textContent = '▶️ Enable';
+        btn.className   = 'btn btn-success';
+        card.classList.remove('ka-on');
+        document.getElementById('ka-target-info').style.display = 'none';
+    }
+}
+
+function toggleKillaura() {
+    if (!S.selectedId) { toast('Chọn bot trước!', 'warning'); return; }
+    const bot = S.bots[S.selectedId];
+    if (!bot) return;
+
+    if (bot.killaura?.enabled) {
+        doAction('killaura', { enabled: false });
+    } else {
+        applyKillauraSettings();
+    }
+}
+
+function applyKillauraSettings() {
+    if (!S.selectedId) { toast('Chọn bot trước!', 'warning'); return; }
+    const range    = parseFloat(document.getElementById('ka-range').value) || 4.5;
+    const speed    = parseFloat(document.getElementById('ka-speed').value) || 0;
+    const priority = document.getElementById('ka-priority').value;
+    const fov      = parseFloat(document.getElementById('ka-fov').value) || 360;
+    const type     = document.getElementById('ka-target-type').value;
+
+    doAction('killaura', {
+        enabled:           true,
+        range,
+        speed,
+        priority,
+        fov,
+        targetTypes:       [type],
+        pauseOnContainers: S.kaToggles.containers,
+        filterAnimals:     S.kaToggles.animals,
+        filterPlayers:     S.kaToggles.players,
+        filterNamed:       S.kaToggles.named
+    });
+    toast('KillAura BẬT!', 'success');
+}
+
+function toggleOpt(key) {
+    S.kaToggles[key] = !S.kaToggles[key];
+    const el = document.getElementById(`tog-${key}`);
+    if (S.kaToggles[key]) el.classList.add('on');
+    else el.classList.remove('on');
+}
+
+// ====================================================================
+// ACTIONS
+// ====================================================================
+
+function doAction(action, params = {}) {
+    if (!S.selectedId) { toast('Chọn bot trước!', 'warning'); return; }
+    S.socket.emit('bot:action', { botId: S.selectedId, action, params }, (res) => {
+        if (!res?.success) toast(`Lỗi: ${res?.error || 'Unknown'}`, 'error');
+    });
+}
+
+function reconnectCurrent() {
+    if (!S.selectedId) return;
+    S.socket.emit('bot:reconnect', { botId: S.selectedId }, (res) => {
+        if (res?.success) toast('Đang reconnect...', 'info');
+    });
+}
+
+function removeCurrent() {
+    if (!S.selectedId) return;
+    if (!confirm('Xóa bot này?')) return;
+    S.socket.emit('bot:remove', { botId: S.selectedId });
+}
+
+// ====================================================================
+// CHAT
+// ====================================================================
+
+function addChatMsg(botId, entry) {
+    if (!S.chatMsgs[botId]) S.chatMsgs[botId] = [];
+    S.chatMsgs[botId].push(entry);
+    if (S.chatMsgs[botId].length > 300) S.chatMsgs[botId] = S.chatMsgs[botId].slice(-150);
+
+    if (S.selectedId === botId) appendChatEl(entry);
+}
+
+function appendChatEl(entry) {
+    const c   = document.getElementById('chatMsgs');
+    const tip = c.querySelector('div[style*="text-align:center"]');
+    if (tip) tip.remove();
+
+    const div  = document.createElement('div');
+    div.className = `chat-msg ${entry.type || 'chat'}`;
+    const time = new Date(entry.timestamp || Date.now()).toLocaleTimeString('vi-VN', { hour:'2-digit', minute:'2-digit', second:'2-digit' });
+
+    if (entry.type === 'system') {
+        div.innerHTML = `<span class="time">${time}</span> <em>${esc(entry.message)}</em>`;
+    } else {
+        div.innerHTML = `<span class="time">${time}</span> <span class="user">&lt;${esc(entry.username || 'Bot')}&gt;</span> ${esc(entry.message)}`;
+    }
+
+    c.appendChild(div);
+    c.scrollTop = c.scrollHeight;
+}
+
+function sendChatMsg() {
+    if (!S.selectedId) { toast('Chọn bot trước!', 'warning'); return; }
+    const inp = document.getElementById('chatInput');
+    const msg = inp.value.trim();
+    if (!msg) return;
+
+    S.socket.emit('bot:chat', { botId: S.selectedId, message: msg });
+    addChatMsg(S.selectedId, {
+        type: 'sent', username: S.bots[S.selectedId]?.username || 'Bot',
+        message: msg, timestamp: Date.now()
+    });
+    inp.value = '';
+}
+
+// ====================================================================
+// INVENTORY
+// ====================================================================
+
+function refreshInv() {
+    if (!S.selectedId) return;
+    S.socket.emit('bot:inventory', { botId: S.selectedId }, (res) => {
+        if (res?.success) renderInv(res.inventory);
+    });
+}
+
+function renderInv(items) {
+    const grid = document.getElementById('invGrid');
+    const slots = new Array(36).fill(null);
+    if (items) items.forEach(i => {
+        const idx = i.slot >= 9 ? i.slot - 9 : i.slot + 27;
+        if (idx >= 0 && idx < 36) slots[idx] = i;
+    });
+    grid.innerHTML = slots.map((i, _) => {
+        if (!i) return `<div class="inv-slot"></div>`;
+        const icon = getItemIcon(i.name);
+        return `<div class="inv-slot filled" title="${esc(i.displayName || i.name)} x${i.count}" onclick="pickItem('${esc(i.name)}')">
+            <span class="inv-icon">${icon}</span>
+            <span class="inv-name">${esc(i.displayName || i.name)}</span>
+            ${i.count > 1 ? `<span class="inv-count">${i.count}</span>` : ''}
+        </div>`;
+    }).join('');
+}
+
+function pickItem(name) {
+    document.getElementById('equipName').value = name;
+    document.getElementById('dropName').value  = name;
+}
+
+function updateDetailView(bot) {
+    if (bot.inventory) renderInv(bot.inventory);
+    if (bot.equipment) renderEquipment(bot.equipment);
+    if (bot.nearbyEntities) renderEntityList(bot.nearbyEntities);
+    if (bot.players) renderPlayerList(bot.players);
+}
+
+function renderEquipment(eq) {
+    const el = document.getElementById('eqDisplay');
+    const slots = { head:'⛑️ Head', torso:'👕 Chest', legs:'👖 Legs', feet:'👟 Boots', hand:'🗡️ Hand', 'off-hand':'🛡️ Off' };
+    el.innerHTML = Object.entries(slots).map(([s, lbl]) => {
+        const item = eq[s];
+        return `<div style="display:flex;justify-content:space-between;padding:5px 0;border-bottom:1px solid var(--border);font-size:0.82rem">
+            <span style="color:var(--text2)">${lbl}</span>
+            <span>${item ? esc(item.displayName || item.name) : '<span style="color:var(--text2)">Empty</span>'}</span>
+        </div>`;
+    }).join('');
+}
+
+function equipItem() {
+    const name = document.getElementById('equipName').value.trim();
+    const slot = document.getElementById('equipSlot').value;
+    if (!name) { toast('Nhập tên item', 'warning'); return; }
+    doAction('equip', { itemName: name, destination: slot });
+}
+
+function setHotbar() {
+    const slot = document.getElementById('hotbarSlot').value;
+    doAction('hotbar', { slot: parseInt(slot) });
+}
+
+function dropItem() {
+    const name  = document.getElementById('dropName').value.trim();
+    const count = document.getElementById('dropCount').value;
+    if (!name) { toast('Nhập tên item', 'warning'); return; }
+    doAction('drop', { itemName: name, count });
+}
+
+// ====================================================================
+// ENTITIES
+// ====================================================================
+
+function refreshEntities() {
+    if (!S.selectedId) return;
+    fetch(`/api/bots/${S.selectedId}/entities`).then(r => r.json()).then(d => {
+        if (d.success) renderEntityList(d.entities);
+    }).catch(() => {});
+    fetch(`/api/bots/${S.selectedId}/players`).then(r => r.json()).then(d => {
+        if (d.success) renderPlayerList(d.players);
+    }).catch(() => {});
+}
+
+function renderEntityList(entities) {
+    const el = document.getElementById('entityList');
+    if (!entities?.length) {
+        el.innerHTML = '<div style="padding:20px;text-align:center;color:var(--text2)">Không có entity</div>';
+        return;
+    }
+    el.innerHTML = entities.slice(0, 40).map(e => {
+        const icon = e.isHostile ? '💀' : e.type === 'player' ? '👤' : '🐄';
+        const cls  = e.isHostile ? 'hostile' : e.type === 'player' ? 'player' : 'passive';
+        return `<div class="entity-item">
+            <div class="entity-info">
+                <div class="entity-icon ${cls}">${icon}</div>
+                <div>
+                    <div class="entity-name">${esc(e.name || 'Unknown')} ${e.isTarget ? '<span class="target-badge">⚔️TARGET</span>' : ''}</div>
+                    <div class="entity-detail">${e.type} | HP:${e.health || '?'}</div>
+                </div>
+            </div>
+            <div style="display:flex;align-items:center;gap:6px">
+                <span class="entity-dist">${e.distance}m</span>
+                ${e.type !== 'player' ? `<button class="btn btn-sm btn-danger" onclick="doAction('attack',{entityId:${e.id}})">⚔️</button>` : ''}
+            </div>
+        </div>`;
+    }).join('');
+}
+
+function renderPlayerList(players) {
+    const el = document.getElementById('playerList');
+    if (!players?.length) {
+        el.innerHTML = '<div style="padding:20px;text-align:center;color:var(--text2)">Không có player</div>';
+        return;
+    }
+    el.innerHTML = players.map(p => `<div class="entity-item">
+        <div class="entity-info">
+            <div class="entity-icon player">👤</div>
+            <div>
+                <div class="entity-name">${esc(p.username)}</div>
+                <div class="entity-detail">Ping: ${p.ping}ms ${p.entity ? `| ${p.entity.distance}m` : ''}</div>
+            </div>
+        </div>
+    </div>`).join('');
+}
+
+// ====================================================================
+// CONSOLE
+// ====================================================================
+
+function addConsoleLog(entry) {
+    S.consoleLogs.push(entry);
+    if (S.consoleLogs.length > 1000) S.consoleLogs = S.consoleLogs.slice(-500);
+    if (S.logFilter !== 'all' && entry.level !== S.logFilter) return;
+    appendConsoleEl(entry);
+}
+
+function appendConsoleEl(entry) {
+    const out  = document.getElementById('consoleOut');
+    const line = document.createElement('div');
+    line.className = 'console-line';
+    const time = entry.time || new Date(entry.timestamp).toLocaleTimeString();
+    line.innerHTML = `<span class="c-time">${time}</span><span class="c-level ${entry.level}">${entry.level}</span><span class="c-msg">${esc(entry.message)}</span>`;
+    out.appendChild(line);
+    if (out.children.length > 300) out.removeChild(out.firstChild);
+    out.scrollTop = out.scrollHeight;
+}
+
+function filterLogs() {
+    S.logFilter = document.getElementById('logFilter').value;
+    const out = document.getElementById('consoleOut');
+    out.innerHTML = '';
+    S.consoleLogs.forEach(e => {
+        if (S.logFilter === 'all' || e.level === S.logFilter) appendConsoleEl(e);
+    });
+}
+
+function clearConsole() {
+    document.getElementById('consoleOut').innerHTML = '';
+    S.consoleLogs = [];
+}
+
+function sendConsole() {
+    if (!S.selectedId) { toast('Chọn bot trước!', 'warning'); return; }
+    const inp = document.getElementById('consoleInput');
+    const msg = inp.value.trim();
+    if (!msg) return;
+    S.socket.emit('bot:chat', { botId: S.selectedId, message: msg });
+    inp.value = '';
+}
+
+// ====================================================================
+// BOT CREATION
+// ====================================================================
+
+function showCreateModal() {
+    document.getElementById('createModal').classList.add('show');
+    document.getElementById('m-user').focus();
+}
+
+function closeCreateModal() {
+    document.getElementById('createModal').classList.remove('show');
+}
+
+function createBot() {
+    const username = document.getElementById('m-user').value.trim();
+    const host     = document.getElementById('m-host').value.trim() || 'localhost';
+    const port     = parseInt(document.getElementById('m-port').value) || 25565;
+    const version  = document.getElementById('m-ver').value;
+    const auth     = document.getElementById('m-auth').value;
+
+    if (!username) { toast('Nhập username!', 'error'); return; }
+
+    S.socket.emit('bot:create', { username, host, port, version, auth }, (res) => {
+        if (res?.success) {
+            closeCreateModal();
+            setTimeout(() => selectBot(res.botId), 300);
+        } else {
+            toast(`Lỗi: ${res?.error}`, 'error');
+        }
+    });
+}
+
+// ====================================================================
+// TABS
+// ====================================================================
+
+function switchTab(name) {
+    document.querySelectorAll('.tab').forEach(t => t.classList.remove('active'));
+    document.querySelectorAll('.panel').forEach(p => p.classList.remove('active'));
+    document.querySelector(`.tab[data-tab="${name}"]`).classList.add('active');
+    document.getElementById(`panel-${name}`).classList.add('active');
+    if (name === 'inventory') refreshInv();
+    if (name === 'entities')  refreshEntities();
+}
+
+// ====================================================================
+// UTILS
+// ====================================================================
+
+function refreshAll() {
+    S.socket.emit('request:status', {}, (res) => {
+        if (res?.success) {
+            S.bots = {};
+            res.bots.forEach(b => S.bots[b.id] = b);
+            renderBotList();
+        }
+    });
+}
+
+function esc(str) {
+    if (!str) return '';
+    const d = document.createElement('div');
+    d.textContent = String(str);
+    return d.innerHTML;
+}
+
+function getItemIcon(name) {
+    if (!name) return '📦';
+    const map = {
+        diamond:'💎', gold:'🥇', iron:'🔩', emerald:'💚', coal:'⚫',
+        redstone:'🔴', lapis:'🔵', sword:'🗡️', pickaxe:'⛏️', axe:'🪓',
+        shovel:'🏗️', bow:'🏹', shield:'🛡️', helmet:'⛑️', chestplate:'👕',
+        leggings:'👖', boots:'👟', apple:'🍎', bread:'🍞', beef:'🥩',
+        pork:'🥓', fish:'🐟', carrot:'🥕', potato:'🥔', wheat:'🌾',
+        log:'🪵', stone:'🪨', dirt:'🟫', sand:'🟨', torch:'🔦',
+        bucket:'🪣', bone:'🦴', arrow:'➡️', book:'📖', map:'🗺️',
+        chest:'📦', potion:'🧪', golden:'🌟', cooked:'🍖'
+    };
+    for (const [k, v] of Object.entries(map)) {
+        if (name.toLowerCase().includes(k)) return v;
+    }
+    return '📦';
+}
+
+function toast(msg, type = 'info') {
+    const c = document.getElementById('toasts');
+    const t = document.createElement('div');
+    t.className = `toast ${type}`;
+    t.textContent = msg;
+    c.appendChild(t);
+    setTimeout(() => { if (t.parentNode) t.parentNode.removeChild(t); }, 4000);
+}
+
+// ====================================================================
+// KEYBOARD
+// ====================================================================
+
+document.addEventListener('keydown', e => {
+    if (e.target.tagName === 'INPUT' || e.target.tagName === 'SELECT') return;
+    const tabs = ['overview','killaura','chat','inventory','entities','console'];
+    const n = parseInt(e.key);
+    if (n >= 1 && n <= tabs.length) switchTab(tabs[n - 1]);
+    if (e.key === 'Escape') closeCreateModal();
+    if (e.ctrlKey && e.key === 'n') { e.preventDefault(); showCreateModal(); }
+});
+
+document.getElementById('createModal').addEventListener('click', e => {
+    if (e.target === e.currentTarget) closeCreateModal();
+});
+
+// Entities auto refresh mỗi 5s
+setInterval(() => {
+    const activeTab = document.querySelector('.tab.active')?.dataset.tab;
+    if (activeTab === 'entities' && S.selectedId) refreshEntities();
+}, 5000);
+
+// ====================================================================
+// INIT
+// ====================================================================
+
+document.addEventListener('DOMContentLoaded', () => {
+    initSocket();
+    showNoBot();
+    console.log('⚔️ MC Bot Dashboard v4.0 - KillAura Edition');
+});
+</script>
+</body>
+</html>
